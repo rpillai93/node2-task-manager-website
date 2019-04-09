@@ -2,6 +2,8 @@ const mongoose = require('mongoose')
 const validator = require('validator')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
+const Task = require('./task')
+const dotenv=require('dotenv').config()
 const userSchema = new mongoose.Schema({
            name:{
              type: String,
@@ -42,12 +44,32 @@ const userSchema = new mongoose.Schema({
                   type : String,
                   required: true
                 }
-              }]
+              }],
+              avatar:  {
+                     type: Buffer  //allows us to store the buffer with a binary image data in the database along with the user
+              }
+           } , {
+             timestamps: true
            })
 
+ userSchema.virtual('tasks',{   //the virtual file is just for mongoose to understand relationships.
+      ref:'Task',
+      localField:'_id',
+      foreignField:'owner'
+ })
+
+ userSchema.methods.toJSON = function () {
+            const user = this
+            const userObject = user.toObject()
+            delete userObject.password
+            delete userObject.tokens
+            delete userObject.avatar
+            return userObject
+
+}
 userSchema.methods.generateAuthToken = async function () {
   const user = this
-  const token = jwt.sign({_id: user._id.toString()},'thisismynewcourse')
+  const token = jwt.sign({_id: user._id.toString()},process.env.JWT_SECRET)
   user.tokens = user.tokens.concat({token})
   await user.save()
 
@@ -76,6 +98,15 @@ userSchema.pre('save', async function(next) {    //pre and post are middleware f
                       }
 
                        next() //next is called to say that the code is done, so now the user can be saved.
+})
+
+// Delete user tasks when user is removed:
+userSchema.pre('remove', async function(next) {
+     const user = this
+     await Task.deleteMany({ owner: user._id})                   //delete every task associated with the owner
+
+     next()
+
 })
 const User = mongoose.model('User', userSchema)
 
